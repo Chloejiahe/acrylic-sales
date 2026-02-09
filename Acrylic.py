@@ -3,23 +3,21 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import requests
-from io import BytesIO
+# 不需要再 import requests 和 BytesIO 了
 
 # -----------------------------------------------------------------------------
-# 1. 页面配置与 GitHub 数据读取
+# 1. 页面配置与 本地数据读取
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Ohuhu 丙烯笔大盘与VOM稳定性看板", layout="wide", page_icon="🎨")
 
-# ⚠️ 请修改此处为您的真实 GitHub Raw 链接
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/你的用户名/你的仓库名/main/丙烯笔打标总表.xlsx"
+# 直接指定文件名即可，因为它就在你的 GitHub 仓库根目录
+EXCEL_FILE = "丙烯笔打标总表.xlsx"
 
-@st.cache_data(ttl=3600) # 每小时自动刷新一次缓存
-def load_data_from_github(url):
+@st.cache_data(ttl=3600)
+def load_data_local(file_path):
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        df = pd.read_excel(BytesIO(response.content))
+        # 直接使用 pandas 读取本地文件
+        df = pd.read_excel(file_path)
         
         # 日期预处理
         df['Date_Obj'] = pd.to_datetime(df['Date'], format='%Y%m')
@@ -37,9 +35,7 @@ def load_data_from_github(url):
         df['Unit_Price'] = df['Price'] / df['产品支数']
         
         # 【核心：ASIN 稳定性计算】
-        # 计算整个数据集涵盖了多少个月
         total_months_in_dataset = df['Date'].nunique()
-        # 统计每个 ASIN 出现的总次数
         asin_counts = df.groupby('ASIN')['Date'].count().reset_index()
         asin_counts.columns = ['ASIN', '在榜月数']
         
@@ -48,15 +44,19 @@ def load_data_from_github(url):
         df['稳定性评分'] = df['在榜月数'] / total_months_in_dataset
         
         return df, total_months_in_dataset
+    except FileNotFoundError:
+        st.error(f"找不到文件：{file_path}。请确保该文件已上传到 GitHub 仓库根目录。")
+        return pd.DataFrame(), 0
     except Exception as e:
-        st.error(f"GitHub 数据读取失败，请检查链接或仓库权限。错误: {e}")
+        st.error(f"数据处理出错: {e}")
         return pd.DataFrame(), 0
 
-df, total_periods = load_data_from_github(GITHUB_RAW_URL)
+# 执行读取
+df, total_periods = load_data_local(EXCEL_FILE)
 
 if df.empty:
+    st.warning("数据表为空，请检查 Excel 文件内容。")
     st.stop()
-
 # -----------------------------------------------------------------------------
 # 2. 侧边栏：品牌全量筛选
 # -----------------------------------------------------------------------------
